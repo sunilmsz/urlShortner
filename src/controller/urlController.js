@@ -2,6 +2,8 @@ const urlModel = require('../models/urlModel')
 const redis = require('redis')
 const { promisify } = require("util")
 
+//.............................Redis Configuration.....................................
+
 const connectRedis = redis.createClient(
     15198,
     "redis-15198.c212.ap-south-1-1.ec2.cloud.redislabs.com",
@@ -14,11 +16,13 @@ connectRedis.on("connect", async function () {
     console.log("Connected to Redis..");
 })
 
+//...................Connection setup for redis........................................
+
 const SET_ASYNC = promisify(connectRedis.SET).bind(connectRedis);
 const GET_ASYNC = promisify(connectRedis.GET).bind(connectRedis);
 
 
-
+//...................Generating random UrlCode for shortUrl........................................
 function randomSt(length) {
     let result = '';
     let characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -32,61 +36,83 @@ function randomSt(length) {
 
 const createUrl = async (req, res) => {
 
-    const { longUrl } = req.body
-    if (!longUrl)
-        return res.status(400).send({ status: false, message: "Please provide longUrl, it is mandatory" })
+    try {
 
-    const reg = /^(http(s)?:\/\/.)(www\.)?[-a-zA-Z0-9@:%.\+#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%\+.#?&//=_]*$)/g
-    if ((typeof longUrl !== "string")  || !reg.test(longUrl.trim()))
-        return res.status(400).send({ status: false, message: "Please provide valid Url" })
+        const { longUrl } = req.body
+        if (!longUrl)
+            return res.status(400).send({ status: false, message: "Please provide longUrl" })
+
+        const reg = /(:?^((https|http|HTTP|HTTPS){1}:\/\/)(([w]{3})[\.]{1}|)?([a-zA-Z0-9]{1,}[\.])[\w]*((\/){1}([\w@?^=%&amp;~+#-_.]+))*)$/g
+        if ((typeof longUrl !== "string") || !reg.test(longUrl.trim()))
+            return res.status(400).send({ status: false, message: "Please provide valid Url" })
         let cahcedUrlData = await GET_ASYNC(longUrl)
-        console.log(cahcedUrlData)
+
         if (cahcedUrlData) {
             console.log("data from cache")
-            return res.status(201).send({status:true,data:JSON.parse(cahcedUrlData)}) 
-            
-        }
-        // else {
-        //     const isAlready = await urlModel.findOne({ longUrl }).lean()
-        //     if (isAlready)
-        //         return res.status(201).send({ status: true, data:{ longUrl,shortUrl:isAlready.shortUrl,urlCode:isAlready.urlCode} })
-        // } 
-       
-    
-    let endPoint;
-    let condition = true;
-    while (condition == true) {
-        endPoint = randomSt(8)
-        let UrlData = await GET_ASYNC(endPoint)
-        // console.log(UrlData)
-        if (!UrlData) {
-            condition = false;
-        }
-        // const isPresent = await urlModel.findOne({ urlCode: endPoint }).count()
-        // if (isPresent == 0)
-        //     condition = false;
-    }
+            return res.status(200).send({ status: true, data: JSON.parse(cahcedUrlData) })
 
-    const savedData = await urlModel.create({ longUrl, urlCode: endPoint, shortUrl: "http://localhost:3000/" + endPoint })
-    // console.log(savedData.longUrl)
-    await SET_ASYNC(`${endPoint}`, longUrl)
+        }
+        else {
+            const isAlready = await urlModel.findOne({ longUrl }).lean()
+            if (isAlready)
+                return res.status(200).send({ status: true, data: { longUrl, shortUrl: isAlready.shortUrl, urlCode: isAlready.urlCode } })
+        }
+
+
+        let endPoint;
+        let condition = true;
+        while (condition == true) {
+            endPoint = randomSt(8)
+            let UrlData = await GET_ASYNC(endPoint)
+            // console.log(UrlData)
+            if (!UrlData) {
+                condition = false;
+            }
+            const isPresent = await urlModel.findOne({ urlCode: endPoint }).count()
+            if (isPresent == 0)
+                condition = false;
+        }
+
+        const savedData = await urlModel.create({ longUrl, shortUrl: "http://localhost:3000/" + endPoint, urlCode: endPoint })
+
+        await SET_ASYNC(`${endPoint}`, longUrl)
+
+        await SET_ASYNC(`${longUrl}`, JSON.stringify({ longUrl, urlCode: endPoint, shortUrl: savedData.shortUrl }))
+        return res.status(201).send({ status: true, data: { longUrl: savedData.longUrl, shortUrl: savedData.shortUrl, urlCode: savedData.urlCode } })
     
-    await SET_ASYNC(`${longUrl}`, JSON.stringify({longUrl,urlCode:endPoint,shortUrl:savedData.shortUrl}))
-    return res.status(201).send({ status: true, data: { longUrl: savedData.longUrl, shortUrl: savedData.shortUrl, urlCode: savedData.urlCode } })
+    } catch (err) {
+        console.log("This is the error :", err.message)
+        return res.status(500).send({ status: false, msg: err.message })
+    }
 }
+
+
 
 const getUrl = async function (req, res) {
-    let params=req.params.urlCode
-    let url = await GET_ASYNC(params)
-    // let url = await urlModel.findOne({ urlCode: req.params.urlCode }).select({ longUrl: 1, _id: 0 })
-    console.log(url)
-    if (url) {
-        return res.redirect(url)
-    } else {
-        return res.status(404).send({ status: false, Message: "No URL found" })
+    try {
+        let params = req.params.urlCode
+        let url = await GET_ASYNC(`${params}`)
+
+        if (url) {
+            return res.status(302).redirect(url)
+        } else {
+            let DBurl = await urlModel.findOne({ urlCode: req.params.urlCode }).select({ longUrl: 1, _id: 0 })
+            // console.log(DBurl)
+            if (!DBurl) {
+                return res.status(404).send({ status: false, Message: "No URL found" })
+            }
+            else {
+                await SET_ASYNC(`${params}`, JSON.stringify(DBurl))
+                return res.status(302).redirect(DBurl.longUrl);
+            }
+
+        }
+    } catch (err) {
+        console.log("This is the error :", err.message)
+        return res.status(500).send({ status: false, msg: err.message })
     }
 }
 
-module.exports = { createUrl, getUrl}
+module.exports = { createUrl, getUrl }
 
 
