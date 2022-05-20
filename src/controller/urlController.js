@@ -42,7 +42,7 @@ const createUrl = async (req, res) => {
         if (!longUrl)
             return res.status(400).send({ status: false, message: "Please provide longUrl" })
 
-        const reg = /(:?^((https|http|HTTP|HTTPS){1}:\/\/)(([w]{3})[\.]{1}|)?([a-zA-Z0-9]{1,}[\.])[\w]*((\/){1}([\w@?^=%&amp;~+#-_.]+))*)$/g
+        const reg = /^([hH][tT][tT][pP]([sS])?:\/\/.)(www\.)?[-a-zA-Z0-9@:%.\+#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%\+.#?&//=_]*$)/g
         if ((typeof longUrl !== "string") || !reg.test(longUrl.trim()))
             return res.status(400).send({ status: false, message: "Please provide valid Url" })
         let cahcedUrlData = await GET_ASYNC(longUrl)
