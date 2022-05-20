@@ -66,11 +66,11 @@ const createUrl = async (req, res) => {
             let UrlData = await GET_ASYNC(endPoint)
             // console.log(UrlData)
             if (!UrlData) {
-                condition = false;
+                const isPresent = await urlModel.findOne({ urlCode: endPoint }).count()
+                if (isPresent == 0)
+                    condition = false;
             }
-            const isPresent = await urlModel.findOne({ urlCode: endPoint }).count()
-            if (isPresent == 0)
-                condition = false;
+
         }
 
         const savedData = await urlModel.create({ longUrl, shortUrl: "http://localhost:3000/" + endPoint, urlCode: endPoint })
@@ -79,7 +79,7 @@ const createUrl = async (req, res) => {
 
         await SET_ASYNC(`${longUrl}`, JSON.stringify({ longUrl, urlCode: endPoint, shortUrl: savedData.shortUrl }))
         return res.status(201).send({ status: true, data: { longUrl: savedData.longUrl, shortUrl: savedData.shortUrl, urlCode: savedData.urlCode } })
-    
+
     } catch (err) {
         console.log("This is the error :", err.message)
         return res.status(500).send({ status: false, msg: err.message })
@@ -93,20 +93,16 @@ const getUrl = async function (req, res) {
         let params = req.params.urlCode
         let url = await GET_ASYNC(`${params}`)
 
-        if (url) {
+        if (url)
             return res.status(302).redirect(url)
-        } else {
-            let DBurl = await urlModel.findOne({ urlCode: req.params.urlCode }).select({ longUrl: 1, _id: 0 })
-            // console.log(DBurl)
-            if (!DBurl) {
-                return res.status(404).send({ status: false, Message: "No URL found" })
-            }
-            else {
-                await SET_ASYNC(`${params}`, JSON.stringify(DBurl))
-                return res.status(302).redirect(DBurl.longUrl);
-            }
 
-        }
+        let DBurl = await urlModel.findOne({ urlCode: req.params.urlCode }).select({ longUrl: 1, _id: 0 })
+        if (!DBurl)
+            return res.status(404).send({ status: false, Message: "No URL found" })
+
+        await SET_ASYNC(`${params}`, JSON.stringify(DBurl))
+        return res.status(302).redirect(DBurl.longUrl);
+
     } catch (err) {
         console.log("This is the error :", err.message)
         return res.status(500).send({ status: false, msg: err.message })
