@@ -1,25 +1,7 @@
 const urlModel = require('../models/urlModel')
-const redis = require('redis')
-const { promisify } = require("util")
+const redis = require("./redisController")
 
-//.............................Redis Configuration.....................................
 
-const connectRedis = redis.createClient(
-    15198,
-    "redis-15198.c212.ap-south-1-1.ec2.cloud.redislabs.com",
-    { no_ready_check: true })
-connectRedis.auth("gRmuJaqLnTwKyB4VSZwhhUBTPnSfNbdy", function (err) {
-    if (err) throw err;
-});
-
-connectRedis.on("connect", async function () {
-    console.log("Connected to Redis..");
-})
-
-//...................Connection setup for redis........................................
-
-const SETEX_ASYNC = promisify(connectRedis.SETEX).bind(connectRedis);
-const GET_ASYNC = promisify(connectRedis.GET).bind(connectRedis);
 
 
 //...................Generating random UrlCode for shortUrl........................................
@@ -53,7 +35,7 @@ const createUrl = async (req, res) => {
         // let condition = true;
         // while (condition == true) {
             endPoint = randomSt(8)
-        //     let UrlData = await GET_ASYNC(endPoint)
+        //     let UrlData = await redis.get(endPoint)
         //     // console.log(UrlData)
         //     if (!UrlData) {
         //         const isPresent = await urlModel.findOne({ urlCode: endPoint }).count()
@@ -78,9 +60,9 @@ const createUrl = async (req, res) => {
 const getUrl = async function (req, res) {
     try {
         let params = req.params.urlCode
-        let url = await GET_ASYNC(`${params}`)
+        let url = await redis.get(`${params}`)
         if (url) {
-            console.log("comming from cache")
+            //console.log("comming from cache")
             return res.status(302).redirect(url)
         }
 
@@ -88,7 +70,7 @@ const getUrl = async function (req, res) {
         if (!DBurl)
             return res.status(404).send({ status: false, Message: "No URL found" })
 
-            await SETEX_ASYNC(`${params}`, 4 * 60 * 60, DBurl.longUrl)
+            await redis.setEx(`${params}`, 4 * 60 * 60, DBurl.longUrl)
 
         return res.status(302).redirect(DBurl.longUrl);
 
